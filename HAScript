@@ -1,0 +1,301 @@
+#!/bin/sh
+# pfSense - HA/Cluster SCript - Paul Bargiel
+# Contact: pawelb@ciscosys.org
+
+
+
+#########################################################################################
+#                       PATHS					                                                  #
+#                                                                                       #
+#########################################################################################
+
+PIDFILE=/root/scripts/HAcheck.pid
+routesfile=/root/scripts/Routes
+logfile=/var/log/hascript.log
+
+
+#########################################################################################
+#                       FUNCTIONS                                                       #
+#                                                                                       #
+#########################################################################################
+
+
+#Time stamping for logs
+echo_time() {
+    date +"%a %D %T $*"
+}
+
+#########################################################################################
+#			Check if the script is already running                                            #
+#											                                                                  #
+#########################################################################################
+
+if [ -f $PIDFILE ]
+then
+  PID=$(cat $PIDFILE)
+  ps -p $PID > /dev/null 2>&1
+  if [ $? -eq 0 ]
+  then
+    echo_time "Job is already running" >> $logfile
+    exit 1
+  else
+    ## Process not found assume not running
+    echo $$ > $PIDFILE
+    if [ $? -ne 0 ]
+    then
+      echo_time "Could not create PID file"  >> $logfile
+      exit 1
+    fi
+  fi
+else
+  echo $$ > $PIDFILE
+  if [ $? -ne 0 ]
+  then
+    echo_time "Could not create PID file"
+    exit 1
+  fi
+fi
+
+
+########################################################################################
+#                      LOAD CONFIGURATION                                   	         #
+#                                                                                      #
+########################################################################################
+
+#Load configuration from a file
+ if [ -e /root/scripts/config ]
+        then
+                . /root/scripts/config
+                #DEBUG 
+		echo_time "Config Loaded" >> $logfile
+        else
+                #DEBUG 
+		echo_time "File does not exist"  >> $logfile
+
+        fi
+
+
+########################################################################################
+# Determin if the firewall is Primary or Secondary - check if the EIP attached to WAN1 #
+# if attached to myself, I am Primary otherwise I am Secondary			                   #
+#If the unit is Primary, do not execute this script, skip with log, this is Primary    #
+########################################################################################
+
+while HA=1
+do
+ 
+########################################################################################
+#                               CHECK IF UNIT IS PRIMARY OR SECONDARY                  #
+#                                                                                      #
+########################################################################################
+
+
+#AWS Primary Unit Interfaces and EIPs
+
+ 
+AWSPriWAN1if=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip1 --query 'Addresses[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG 
+echo_time "AWSPriWAN1 Interface: $AWSPriWAN1if"  >> $logfile
+#AWSPriWAN2if=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip2 --query 'Addresses[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG echo_time "AWSPriWAN2 Interface: $AWSPriWAN2if"  >> $logfile
+#EIP Asocciation chnages 
+AWSPriEIPAsoc1=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip1 --query 'Addresses[*].AssociationId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG 
+echo_time "AWSPriEIP1 Association:  $AWSPriEIPAsoc1"  >> $logfile
+#AWSPriEIPAsoc2=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip2 --query 'Addresses[*].AssociationId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG echo_time "AWSPriEIP2 Association:  $AWSPriEIPAsoc2"  >> $logfile
+AWSPriEIP1=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip1 --query 'Addresses[*].AllocationId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG 
+echo_time "AWSPriEIP1 Allocation: $AWSPriEIP1" >> $logfile
+#AWSPriEIP2=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip2 --query 'Addresses[*].AllocationId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG echo "AWSPriEIP1 Allocation: $AWSPriEIP2" >> $logfile
+AWSSWAN1Privateif=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$AWSWAN1Privateip --query 'NetworkInterfaces[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG 
+echo_time "Local WAN1 Interface: $AWSSWAN1Privateif" >> $logfile
+#AWSSWAN2Privateif=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$AWSWAN2Privateip --query 'NetworkInterfaces[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+	#DEBUG echo_time "Local WAN2 Interface: $AWSSWAN2Privateif" >> $logfile
+
+# Compare Instances IDs
+
+LocalInsID=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$LANip --query 'NetworkInterfaces[*].Attachment.InstanceId'  | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+PriInstanceID=$(/usr/local/bin/aws ec2 describe-addresses --public-ips $AWSPriWANip1 --query 'Addresses[*].InstanceId'| sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+
+#DEBUG 
+echo_time "InstanceIDs: Local: $LocalInsID, Primary: $PriInstanceID" >> $logfile
+      if [ "$LocalInsID" = "$PriInstanceID" ]
+               then
+                 unit="Primary"
+                   #DEBUG 
+echo_time "This unit is $unit" >> $logfile
+sleep 300
+               else 
+	         unit="Secondary"
+		   #DEBUG
+
+echo_time "This unit is $unit" >> $logfile
+
+
+
+########################################################################################
+#                               SECONDARY UNTI INITIATION			                         #
+#                                                                                      #
+########################################################################################
+
+#Iniitate Secondary Role
+#Secondary Role can be only initiated if the unit can successfully connect to PeerLAN IP at least 5 consequitev pings, otherwise it will not initiate
+
+conncheck=0
+#DEBUG
+echo_time "Secondary unit initialazing...." >> $logfile
+while [ $conncheck -le 5 ]
+do
+ping -W 200 -c 1 $PeerLANip > /dev/null
+
+if [ $? -eq 0 ]; then
+       conncheck=$((conncheck+1))
+          #DEBUG echo_time "$conncheck" >> $logfile
+else
+  if [ $conncheck -gt 0 ]; then
+       conncheck=$((conncheck-1))
+          #DEBUG echo_time "$conncheck" >> $logfile
+  fi
+ echo_time "Connection to Peer unit is failing...check communication between LAN interfaces of both units" >> $logfile
+
+######## ALERT SENDING FUNCTION
+ 
+fi
+#DEBUG echo_time "$conncheck" >> $logfile
+sleep 5
+done
+
+#DEBUG
+echo_time "Proceed, communication to Primary LAN is operational" >> $logfile
+
+
+
+########################################################################################
+#                               HA TESTING                                             #
+#                                                                                      #
+########################################################################################
+
+
+successcount=0
+
+while [ $successcount -le 9 ]
+do
+ping -W 200 -c 1 $PeerLANip > /dev/null
+if [ $? -eq 0 ]; then
+     if [ $successcount -gt 0 ]; then
+     successcount=$((successcount-1))
+          #DEBUG
+echo_time "Ping to Primary unit was missed $successcount times" >> $logfile
+     fi
+          #DEBUG
+echo_time "Ping to Primary unit was missed $successcount times" >> $logfile
+
+         else
+          successcount=$((successcount+1))
+          #DEBUG
+echo_time "Ping to Primary unit was missed $successcount times " >> $logfile
+fi
+sleep 5
+done
+
+
+########################################################################################
+#                               FAILOVER DECISION                                      #
+#                                                                                      #
+########################################################################################
+
+
+if [ $successcount == $FailoverTriger ]
+  then
+#DEBUG
+echo_time "Failover in progress...." >> $logfile
+
+########################################################################################
+#                               EMAIL NOTIFICATION                                     #
+#                                                                                      #
+########################################################################################
+
+ echo "pfSense Failover in progress... " | /usr/local/bin/mail.php -s"pfSense failover occurred"
+ echo_time "Email has been sent to notify about the fail-over" >> $logfile
+
+########################################################################################
+#                               FAILOVER EXECUTION                                     #
+#                                                                                      #
+########################################################################################
+
+#Is the Failover in progress? (Add module)
+
+########################################################################################
+#                               CHANGE ROUTING                		                     #
+#                                                                                      #
+########################################################################################
+#DEBUG
+echo_time "Changing Routes..." >> $logfile
+
+#Consider rotues only in the VPC where the firewalls are configured
+VPCid=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$LANip --query 'NetworkInterfaces[*].VpcId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+#DEBUG
+echo_time "We are in the following VPC: $VPCid" >> $logfile
+
+#Obtain AWS Primary unit LAN interface ID
+AWSPriLANif=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$PeerLANip --query 'NetworkInterfaces[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+#DEBUG
+echo_time "Primary Unit LAN Interface ID: $AWSPriLANif " >> $logfile
+
+#Obtain My own LAN interface interface ID
+LANif=$(/usr/local/bin/aws ec2 describe-network-interfaces --filters Name=addresses.private-ip-address,Values=$LANip --query 'NetworkInterfaces[*].NetworkInterfaceId' | sed 's/[][", ]//g' | tr -d '\040\011\012\015')
+#DEBUG
+echo_time "Local LAN Interface ID: $LANif " >> $logfile
+
+#Save all route table IDs in the VPC  to a file
+/usr/local/bin/aws ec2 describe-route-tables --filters  Name=vpc-id,Values=$VPCid --query 'RouteTables[*].RouteTableId' | sed 's/[][", ]//g' | sed '/^$/d' >  /root/scripts/RouteTables
+#DEBUG
+echo_time "Routes need to be changed in the following routes tables: " >> $logfile
+
+#For each route table, check the Primary LAN interface routes and swap them to point to our LAN interface, we are becoming the Primary UNTI!
+while IFS='' read -r table
+do
+ /usr/local/bin/aws ec2 describe-route-tables --route-table-ids $table --query 'RouteTables[*].Routes[?NetworkInterfaceId ==`'"$AWSPriLANif"'`].DestinationCidrBlock[]' | sed 's/[][", ]//g' | sed '/^$/d' >  /root/scripts/Routes.$table
+ while IFD='' read -r route
+ do
+  /usr/local/bin/aws ec2 replace-route --route-table-id $table --destination-cidr-block $route --network-interface-id  $LANif
+ done < "/root/scripts/Routes.$table"
+done <  "/root/scripts/RouteTables"
+#DEBUG
+echo_time "Routes chagnes completed" >> $logfile
+
+########################################################################################
+#                               CHANGE EIPs                                            #
+#                                                                                      #
+########################################################################################
+#DEBUG
+echo_time "Disassociating EIPs...." >> $logfile
+
+#Disassociate EIPs from Primary
+/usr/local/bin/aws ec2 disassociate-address --association-id $AWSPriEIPAsoc1
+#/usr/local/bin/aws ec2 disassociate-address --association-id $AWSPriEIPAsoc2
+#DEBUG
+echo_time "Disassocating EIPs Completed" >> $logfile
+
+#DEBUG
+echo_time "Associating EIPs..." >> $logfile
+#Associate EIPs to Secondary
+/usr/local/bin/aws ec2 associate-address --allocation-id $AWSPriEIP1 --network-interface-id $AWSSWAN1Privateif
+#/usr/local/bin/aws ec2 associate-address --allocation-id $AWSPriEIP2 --network-interface-id $AWSSWAN2Privateif
+#DEBUG
+echo_time "Assocating EIPs Completed" >> $logfile
+
+unit="Primary"
+sleep 300  #WAIT 5 minutes after becoming a Primary unit
+else
+   #DEBUG
+   echo_time "Error occured" >> $logfile
+fi
+fi              
+
+sleep 60   #WAIT 1 minute if you are Primary before checking again
+done
+
