@@ -289,6 +289,15 @@ echo_time "Assocating EIPs Completed" >> $logfile
  echo "pfSense Failover in progress... " | /usr/local/bin/mail.php -s"pfSense failover occurred"
  echo_time "Email has been sent to notify about the fail-over" >> $logfile
 
+########################################################################################
+#                               Restart VPN Services                                   #
+#                                                                                      #
+########################################################################################
+
+/usr/local/sbin/pfSsh.php playback svc stop ipsec
+/usr/local/sbin/pfSsh.php playback svc start ipsec
+
+########################################################################################
 unit="Primary"
 sleep 300  #WAIT 5 minutes after becoming a Primary unit
 else
