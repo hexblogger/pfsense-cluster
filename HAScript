@@ -1,11 +1,11 @@
 #!/bin/sh
-# pfSense - HA/Cluster SCript - Paul Bargiel
+# pfSense - HA/Cluster Script - Paul Bargiel
 # Contact: pawelb@ciscosys.org
 
 
 
 #########################################################################################
-#                       PATHS					                                                  #
+#                       PATHS					                        #
 #                                                                                       #
 #########################################################################################
 
@@ -26,8 +26,8 @@ echo_time() {
 }
 
 #########################################################################################
-#			Check if the script is already running                                            #
-#											                                                                  #
+#			Check if the script is already running                          #
+						                                        #
 #########################################################################################
 
 if [ -f $PIDFILE ]
@@ -58,7 +58,7 @@ fi
 
 
 ########################################################################################
-#                      LOAD CONFIGURATION                                   	         #
+#                      LOAD CONFIGURATION                                   	       #
 #                                                                                      #
 ########################################################################################
 
@@ -77,7 +77,7 @@ fi
 
 ########################################################################################
 # Determin if the firewall is Primary or Secondary - check if the EIP attached to WAN1 #
-# if attached to myself, I am Primary otherwise I am Secondary			                   #
+# if attached to myself, I am Primary otherwise I am Secondary			       #
 #If the unit is Primary, do not execute this script, skip with log, this is Primary    #
 ########################################################################################
 
@@ -137,7 +137,7 @@ echo_time "This unit is $unit" >> $logfile
 
 
 ########################################################################################
-#                               SECONDARY UNTI INITIATION			                         #
+#                               SECONDARY UNTIT INITIALIZATION			       #
 #                                                                                      #
 ########################################################################################
 
@@ -214,14 +214,6 @@ if [ $successcount == $FailoverTriger ]
 echo_time "Failover in progress...." >> $logfile
 
 ########################################################################################
-#                               EMAIL NOTIFICATION                                     #
-#                                                                                      #
-########################################################################################
-
- echo "pfSense Failover in progress... " | /usr/local/bin/mail.php -s"pfSense failover occurred"
- echo_time "Email has been sent to notify about the fail-over" >> $logfile
-
-########################################################################################
 #                               FAILOVER EXECUTION                                     #
 #                                                                                      #
 ########################################################################################
@@ -229,7 +221,7 @@ echo_time "Failover in progress...." >> $logfile
 #Is the Failover in progress? (Add module)
 
 ########################################################################################
-#                               CHANGE ROUTING                		                     #
+#                               CHANGE ROUTING                		               #
 #                                                                                      #
 ########################################################################################
 #DEBUG
@@ -287,6 +279,15 @@ echo_time "Associating EIPs..." >> $logfile
 #/usr/local/bin/aws ec2 associate-address --allocation-id $AWSPriEIP2 --network-interface-id $AWSSWAN2Privateif
 #DEBUG
 echo_time "Assocating EIPs Completed" >> $logfile
+
+
+########################################################################################
+#                               EMAIL NOTIFICATION                                     #
+#                                                                                      #
+########################################################################################
+
+ echo "pfSense Failover in progress... " | /usr/local/bin/mail.php -s"pfSense failover occurred"
+ echo_time "Email has been sent to notify about the fail-over" >> $logfile
 
 unit="Primary"
 sleep 300  #WAIT 5 minutes after becoming a Primary unit
