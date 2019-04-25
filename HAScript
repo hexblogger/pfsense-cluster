@@ -130,6 +130,8 @@ echo_time "This unit is $unit" >> $logfile
 sleep 300
                else 
 	         unit="Secondary"
+		 /usr/local/sbin/pfSsh.php playback svc stop ipsec
+		 echo_time "IPSec VPN services stopped" >> $logfile
 		   #DEBUG
 
 echo_time "This unit is $unit" >> $logfile
@@ -290,11 +292,10 @@ echo_time "Assocating EIPs Completed" >> $logfile
  echo_time "Email has been sent to notify about the fail-over" >> $logfile
 
 ########################################################################################
-#                               Restart VPN Services                                   #
+#                               Start VPN Services                                     #
 #                                                                                      #
 ########################################################################################
 
-/usr/local/sbin/pfSsh.php playback svc stop ipsec
 /usr/local/sbin/pfSsh.php playback svc start ipsec
 
 ########################################################################################
