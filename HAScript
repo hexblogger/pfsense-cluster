@@ -183,7 +183,7 @@ echo_time "Proceed, communication to Primary LAN is operational" >> $logfile
 
 successcount=0
 
-while [ $successcount -le 9 ]
+while [ $successcount -le $FailoverTriger ]
 do
 ping -W 200 -c 1 $PeerLANip > /dev/null
 if [ $? -eq 0 ]; then
