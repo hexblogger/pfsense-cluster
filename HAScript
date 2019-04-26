@@ -76,9 +76,9 @@ fi
 
 
 ########################################################################################
-# Determin if the firewall is Primary or Secondary - check if the EIP attached to WAN1 #
-# if attached to myself, I am Primary otherwise I am Secondary			       #
-#If the unit is Primary, do not execute this script, skip with log, this is Primary    #
+# Determine if the firewall is Primary or Secondary. Check if the EIP attached to WAN1 #
+# is attached to myself. If so, I am Primary otherwise I am Secondary.			       #
+#If the unit is Primary, do not execute this script. Skip with log, this is Primary.    #
 ########################################################################################
 
 while HA=1
@@ -139,16 +139,16 @@ echo_time "This unit is $unit" >> $logfile
 
 
 ########################################################################################
-#                               SECONDARY UNTIT INITIALIZATION			       #
+#                               SECONDARY UNIT INITIALIZATION			       #
 #                                                                                      #
 ########################################################################################
 
 #Iniitate Secondary Role
-#Secondary Role can be only initiated if the unit can successfully connect to PeerLAN IP at least 5 consequitev pings, otherwise it will not initiate
+#Secondary Role can be only initiated if the unit can successfully connect to PeerLAN IP for at least 5 consecutive pings, otherwise it will not initiate
 
 conncheck=0
 #DEBUG
-echo_time "Secondary unit initialazing...." >> $logfile
+echo_time "Secondary unit initializing...." >> $logfile
 while [ $conncheck -le 5 ]
 do
 ping -W 200 -c 1 $PeerLANip > /dev/null
@@ -249,7 +249,7 @@ echo_time "Local LAN Interface ID: $LANif " >> $logfile
 #DEBUG
 echo_time "Routes need to be changed in the following routes tables: " >> $logfile
 
-#For each route table, check the Primary LAN interface routes and swap them to point to our LAN interface, we are becoming the Primary UNTI!
+#For each route table, check the Primary LAN interface routes and swap them to point to our LAN interface. We are becoming the Primary UNTI!
 while IFS='' read -r table
 do
  /usr/local/bin/aws ec2 describe-route-tables --route-table-ids $table --query 'RouteTables[*].Routes[?NetworkInterfaceId ==`'"$AWSPriLANif"'`].DestinationCidrBlock[]' | sed 's/[][", ]//g' | sed '/^$/d' >  /root/scripts/Routes.$table
