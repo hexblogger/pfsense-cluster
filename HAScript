@@ -210,7 +210,7 @@ done
 ########################################################################################
 
 
-if [ $successcount == $FailoverTriger ]
+if [ $successcount == $((FailoverTriger+1)) ]
   then
 #DEBUG
 echo_time "Failover in progress...." >> $logfile
